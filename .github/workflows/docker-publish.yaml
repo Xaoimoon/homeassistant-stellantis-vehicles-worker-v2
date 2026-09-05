@@ -6,7 +6,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: xaoimoon/orbital 
+  IMAGE_NAME: xaoimoon/stellantis
 
 jobs:
   build-and-push:
