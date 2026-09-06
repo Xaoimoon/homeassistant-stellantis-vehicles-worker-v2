@@ -1,11 +1,36 @@
+import hmac
+import os
 import time
 import asyncio
+from urllib.parse import urlparse
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from playwright.async_api import async_playwright
 import uuid
 
 app = FastAPI()
+
+API_KEY = os.environ.get("WORKER_API_KEY")
+
+# Hosts the Stellantis integration's OAuth login flow can point at
+# (one per brand, from the integration's configs.json "oauth_url" values).
+ALLOWED_LOGIN_HOSTS = {
+    "idpcvs.peugeot.com",
+    "idpcvs.citroen.com",
+    "idpcvs.driveds.com",
+    "idpcvs.opel.com",
+    "idpcvs.vauxhall.co.uk",
+}
+
+MIN_TIMEOUT_MS = 1000
+MAX_TIMEOUT_MS = 60000
+
+def clamp_timeout(value, default):
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        value = default
+    return max(MIN_TIMEOUT_MS, min(value, MAX_TIMEOUT_MS))
 
 browser_process_id = None
 process_start = None
@@ -118,6 +143,12 @@ def http_response(message, process_id, status=400):
 async def fetch(request: Request):
     global force_debug
 
+    if not API_KEY or not hmac.compare_digest(request.query_params.get("key", ""), API_KEY):
+        return JSONResponse(
+            status_code=401,
+            content={"message": "Unauthorized", "code": 401},
+        )
+
     process_id = uuid.uuid4().hex[:8]
 
     log_start_process(process_id)
@@ -129,12 +160,16 @@ async def fetch(request: Request):
         url = payload.get("url")
         email = payload.get("email")
         password = payload.get("password")
-        timeout_page = payload.get("timeout_page", 50000)
-        timeout_input = payload.get("timeout_input", 50000)
+        timeout_page = clamp_timeout(payload.get("timeout_page", 50000), 50000)
+        timeout_input = clamp_timeout(payload.get("timeout_input", 50000), 50000)
         force_debug = payload.get("debug", False)
 
         if not url or not email or not password:
             return http_response("Missing required params", process_id)
+
+        parsed_url = urlparse(url)
+        if parsed_url.scheme != "https" or parsed_url.hostname not in ALLOWED_LOGIN_HOSTS:
+            return http_response("URL not allowed", process_id)
 
         async with browser_lock:
             log_start_context(process_id)
@@ -243,32 +278,24 @@ async def healthcheck():
 
     log_start_process(process_id)
 
-    async with browser_lock:
-        log_process("Check browser", process_id,True)
-        try:
-            context = await asyncio.wait_for(
-                browser.new_context(),
-                timeout=10000
-            )
-            page = await context.new_page()
-            await page.goto("about:blank", timeout=10000)
-            await context.close()
+    log_process("Check browser", process_id, True)
+    if not browser or not browser.is_connected():
+        log_process("Restarting browser", process_id, True)
+        async with browser_lock:
+            if not browser or not browser.is_connected():
+                try:
+                    if browser:
+                        await browser.close()
+                except Exception:
+                    pass
 
-        except Exception as e:
-            log_process(f"Restarting browser: {e}", process_id,True)
-            try:
-                if browser:
-                    await browser.close()
-            except Exception:
-                pass
+                try:
+                    if playwright:
+                        await playwright.stop()
+                except Exception:
+                    pass
 
-            try:
-                if playwright:
-                    await playwright.stop()
-            except Exception:
-                pass
-
-            await start_browser()
+                await start_browser()
 
     log_end_process(process_id)
 
