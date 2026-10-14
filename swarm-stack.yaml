@@ -2,7 +2,9 @@ services:
   stellantis-worker:
     image: ghcr.io/xaoimoon/stellantis:latest
     environment:
-      - WORKER_API_KEY=${WORKER_API_KEY}
+      - WORKER_API_KEY_FILE=/run/secrets/stellantis_worker_api_key
+    secrets:
+      - stellantis_worker_api_key
     ports:
       - target: 3000
         published: 3000
@@ -17,3 +19,7 @@ services:
       restart_policy:
         condition: on-failure
         delay: 5s
+
+secrets:
+  stellantis_worker_api_key:
+    external: true

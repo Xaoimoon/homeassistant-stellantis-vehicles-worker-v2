@@ -56,7 +56,10 @@ docker stack deploy -c swarm-stack.yaml stellantis-worker
 
 | Variable         | Obligatoire | Description                                                                 |
 |------------------|-------------|-------------------------------------------------------------------------------|
-| `WORKER_API_KEY` | Oui         | Secret partagé exigé pour appeler `POST /`. Si absente, l'endpoint refuse tout. |
+| `WORKER_API_KEY` | Oui*        | Secret partagé exigé pour appeler `POST /`. Si absente, l'endpoint refuse tout. |
+| `WORKER_API_KEY_FILE` | Non    | Chemin d'un fichier contenant la clé (secret Docker/Swarm, ex. `/run/secrets/stellantis_worker_api_key`). Prioritaire sur `WORKER_API_KEY`. |
+
+\* L'une des deux.
 
 `WORKER_API_KEY` est ce qui empêche n'importe qui connaissant l'URL du worker
 d'y poster des identifiants et une URL de son choix (le service ferait alors

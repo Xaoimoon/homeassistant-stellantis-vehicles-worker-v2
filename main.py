@@ -10,7 +10,20 @@ import uuid
 
 app = FastAPI()
 
-API_KEY = os.environ.get("WORKER_API_KEY")
+def _load_api_key():
+    # WORKER_API_KEY_FILE (secret Docker/Swarm monté en fichier) est prioritaire sur WORKER_API_KEY.
+    # Fichier illisible ou vide : pas de clé, l'endpoint refuse tout.
+    path = os.environ.get("WORKER_API_KEY_FILE")
+    if path:
+        try:
+            with open(path, encoding="utf-8") as f:
+                return f.read().strip() or None
+        except OSError:
+            return None
+    return os.environ.get("WORKER_API_KEY") or None
+
+
+API_KEY = _load_api_key()
 
 # Hosts the Stellantis integration's OAuth login flow can point at
 # (one per brand, from the integration's configs.json "oauth_url" values).
